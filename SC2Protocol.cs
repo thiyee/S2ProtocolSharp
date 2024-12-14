@@ -974,17 +974,18 @@ namespace SC2Protocol
                 var instance = Activator.CreateInstance(subclass) as S2Protocol;
             }
         }
-        public UInt32 _varuint32_value(PyDictionary value)
+        public BigInteger _varuint32_value(PyDictionary value)
         {
             foreach (var v in value.Values)
             {
-                return (UInt32)v;
+                return (BigInteger)v ;
             }
             return 0;
         }
         public IEnumerable<PyDictionary> _decode_event_stream(BitPackedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
         {
-            BigInteger gameloop = 0;
+            BigInteger gameloop = 0; 
+            List<PyDictionary> result = new List<PyDictionary>();
             while (!decoder.done())
             {
                 var start_bits = decoder.used_bits();
@@ -1007,12 +1008,15 @@ namespace SC2Protocol
                     @event["_userid"] = userid;
                 decoder.byte_align();
                 @event["_bits"] = decoder.used_bits() - start_bits;
-                yield return @event;
+                result.Add(@event);
+                //yield return @event;
             }
+            return result;
         }
         public IEnumerable<PyDictionary> _decode_event_stream(VersionedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
         {
             BigInteger gameloop = 0;
+            List<PyDictionary> result = new List<PyDictionary>();
             while (!decoder.done())
             {
                 var start_bits = decoder.used_bits();
@@ -1035,32 +1039,25 @@ namespace SC2Protocol
                     @event["_userid"] = userid;
                 decoder.byte_align();
                 @event["_bits"] = decoder.used_bits() - start_bits;
-                yield return @event;
+                result.Add(@event);
+                //yield return @event;
             }
+            return result;
         }
         public IEnumerable<PyDictionary> decode_replay_game_events(byte[] contents)
         {
             var decoder = new BitPackedDecoder(contents, typeinfos);
-            foreach (var e in _decode_event_stream(decoder, game_eventid_typeid, game_event_types, true))
-            {
-                yield return e;
-            }
+            return _decode_event_stream(decoder, game_eventid_typeid, game_event_types, true);
         }
         public IEnumerable<PyDictionary> decode_replay_message_events(byte[] contents)
         {
             var decoder = new BitPackedDecoder(contents, typeinfos);
-            foreach (var e in _decode_event_stream(decoder, message_eventid_typeid, message_event_types, true))
-            {
-                yield return e;
-            }
+            return _decode_event_stream(decoder, message_eventid_typeid, message_event_types, true);
         }
         public IEnumerable<PyDictionary> decode_replay_tracker_events(byte[] contents)
         {
             var decoder = new VersionedDecoder(contents, typeinfos);
-            foreach (var e in _decode_event_stream(decoder, tracker_eventid_typeid, tracker_event_types, false))
-            {
-                yield return e;
-            }
+            return _decode_event_stream(decoder, tracker_eventid_typeid, tracker_event_types, false);
         }
         public PyEnumerableObject decode_replay_header(byte[] contents)
         {
@@ -1287,6 +1284,7 @@ namespace SC2Protocol
         {
             //string[] files = Directory.GetFiles(@"D:\Desktop\s2protocol.NET-master\src\s2protocol.NET\libs2\s2protocol\versions", "protocol*.py", SearchOption.TopDirectoryOnly);
             string[] files = Directory.GetFiles(path, "protocol*.py", SearchOption.TopDirectoryOnly);
+            File.Delete("versions.cs");
             foreach (string file in files)
             {
                 string version = Path.GetFileName(file).Split(new[] { "protocol", ".py" }, StringSplitOptions.RemoveEmptyEntries)[0];
@@ -1334,7 +1332,7 @@ public class Protocol{version} : S2Protocol{{
         if(!Build.ContainsKey({version})) Build.Add({version}, this);
     }}
 }}";
-
+                
                 File.AppendAllText("versions.cs", code);
             }
         }
