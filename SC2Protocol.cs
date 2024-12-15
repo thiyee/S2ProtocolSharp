@@ -1060,15 +1060,15 @@ namespace SC2Protocol
             var decoder = new VersionedDecoder(contents, typeinfos);
             return _decode_event_stream(decoder, tracker_eventid_typeid, tracker_event_types, false);
         }
-        public PyEnumerableObject decode_replay_header(byte[] contents)
+        public PyDictionary decode_replay_header(byte[] contents)
         {
             var decoder = new VersionedDecoder(contents, typeinfos);
-            return decoder.instance(replay_header_typeid) as PyEnumerableObject;
+            return decoder.instance(replay_header_typeid) as PyDictionary;
         }
-        public PyEnumerableObject decode_replay_details(byte[] contents)
+        public PyDictionary decode_replay_details(byte[] contents)
         {
             var decoder = new VersionedDecoder(contents, typeinfos);
-            return decoder.instance(game_details_typeid) as PyEnumerableObject;
+            return decoder.instance(game_details_typeid) as PyDictionary;
         }
         public PyEnumerableObject decode_replay_initdata(byte[] contents)
         {
@@ -1112,6 +1112,14 @@ namespace SC2Protocol
             public byte m_r;
             public byte m_g;
             public byte m_b;
+
+            public Color(PyDictionary color){
+                m_a = (byte)(BigInteger)(color["m_a"]);
+                m_r = (byte)(BigInteger)(color["m_r"]);
+                m_g = (byte)(BigInteger)(color["m_g"]);
+                m_b = (byte)(BigInteger)(color["m_b"]);
+            }
+
             public override string ToString()
             {
                 return $"ARGB:{m_a:X}{m_r:X}{m_g:X}{m_b:X}";
@@ -1123,6 +1131,15 @@ namespace SC2Protocol
             public string m_programId;
             public BigInteger m_realm;
             public BigInteger m_id;
+
+            public Handle(PyDictionary pyDictionary)
+            {
+                m_region = (dynamic)pyDictionary["m_region"];
+                m_programId = Encoding.UTF8.GetString((dynamic)pyDictionary["m_programId"]);
+                m_realm = (dynamic)pyDictionary["m_realm"];
+                m_id = (dynamic)pyDictionary["m_id"];
+            }
+
             public override string ToString()
             {
                 return $"{m_region}-{m_programId}-{m_realm}-{m_id}";
@@ -1141,6 +1158,21 @@ namespace SC2Protocol
             public BigInteger m_teamId;
             public Handle m_toon;
             public BigInteger m_workingSetSlotId;
+
+            public Player(PyDictionary player)
+            {
+                m_color = new Color((PyDictionary)player["m_color"]);
+                m_toon = new Handle((PyDictionary)player["m_toon"]);
+                m_control = (dynamic)player["m_control"];
+                m_handicap = (dynamic)player["m_handicap"];
+                m_hero = Encoding.UTF8.GetString((dynamic)player["m_hero"]);
+                m_name = Encoding.UTF8.GetString((dynamic)player["m_name"]);
+                m_observe = (dynamic)player["m_observe"];
+                m_race = Encoding.UTF8.GetString((dynamic)player["m_race"]);
+                m_result = (dynamic)player["m_result"];
+                m_teamId = (dynamic)player["m_teamId"];
+                m_workingSetSlotId = (dynamic)player["m_workingSetSlotId"];
+            }
         }
 
         public struct Header
@@ -1154,6 +1186,15 @@ namespace SC2Protocol
                 public BigInteger m_build;
                 public BigInteger m_baseBuild;
 
+                public Version(PyDictionary ersion) 
+                {
+                    m_flags = (dynamic)ersion["m_flags"];
+                    m_major = (dynamic)ersion["m_major"];
+                    m_minor = (dynamic)ersion["m_minor"];
+                    m_revision = (dynamic)ersion["m_revision"];
+                    m_build = (dynamic)ersion["m_build"];
+                    m_baseBuild = (dynamic)ersion["m_baseBuild"];
+                }
             }
             public byte[] m_signature;
             public Version m_version;
@@ -1167,16 +1208,7 @@ namespace SC2Protocol
             public Header(PyDictionary Structure)
             {
                 m_signature= (dynamic)Structure["m_signature"];
-                PyDictionary pyversion= (dynamic)Structure["m_version"];
-                m_version = new Version()
-                {
-                    m_flags = (dynamic)pyversion["m_flags"],
-                    m_major = (dynamic)pyversion["m_major"],
-                    m_minor = (dynamic)pyversion["m_minor"],
-                    m_revision = (dynamic)pyversion["m_revision"],
-                    m_build = (dynamic)pyversion["m_build"],
-                    m_baseBuild = (dynamic)pyversion["m_baseBuild"],
-                };
+                m_version = new Version((dynamic)Structure["m_version"]);
                 m_type = (dynamic)Structure["m_type"];
                 m_elapsedGameLoops = (dynamic)Structure["m_elapsedGameLoops"];
                 m_useScaledTime = (dynamic)Structure["m_useScaledTime"];
@@ -1186,7 +1218,7 @@ namespace SC2Protocol
                 m_ngdpRootKeyIsDevData = (dynamic)Structure["m_ngdpRootKeyIsDevData"];
             }
         }
-        public class Details
+        public struct Details
         {
             public string m_imageFilePath;
             public bool m_isBlizzardMap;
@@ -1197,12 +1229,16 @@ namespace SC2Protocol
             public BigInteger m_timeLocalOffset;
             public BigInteger m_timeUTC;
             public string m_title;
-            public Dictionary<string, string> m_thumbnail = new Dictionary<string, string>();
-            public List<byte[]> m_cacheHandles = new List<byte[]>();
-            public List<Player> m_playerList = new List<Player>();
+            public Dictionary<string, string> m_thumbnail;
+            public List<byte[]> m_cacheHandles;
+            public List<Player> m_playerList;
 
             public Details(PyDictionary Structure)
             {
+                m_thumbnail = new Dictionary<string, string>();
+                m_cacheHandles = new List<byte[]>();
+                m_playerList = new List<Player>();
+
                 m_imageFilePath = Encoding.UTF8.GetString((dynamic)Structure["m_imageFilePath"]);
                 m_isBlizzardMap = (dynamic)Structure["m_isBlizzardMap"];
                 m_mapFileName = Encoding.UTF8.GetString((dynamic)Structure["m_mapFileName"]);
@@ -1222,39 +1258,102 @@ namespace SC2Protocol
                 }
                 foreach (PyDictionary player in (PyList)Structure["m_playerList"])
                 {
-                    Color color = new Color()
-                    {
-                        m_a = (byte)(BigInteger)(((PyDictionary)player["m_color"])["m_a"]),
-                        m_r = (byte)(BigInteger)(((PyDictionary)player["m_color"])["m_r"]),
-                        m_g = (byte)(BigInteger)(((PyDictionary)player["m_color"])["m_g"]),
-                        m_b = (byte)(BigInteger)(((PyDictionary)player["m_color"])["m_b"]),
-                    };
-                    Handle handle = new Handle()
-                    {
-                        m_region = (dynamic)((PyDictionary)player["m_toon"])["m_region"],
-                        m_programId = Encoding.UTF8.GetString((dynamic)((PyDictionary)player["m_toon"])["m_programId"]),
-                        m_realm = (dynamic)((PyDictionary)player["m_toon"])["m_realm"],
-                        m_id = (dynamic)((PyDictionary)player["m_toon"])["m_id"]
-                    };
-                    m_playerList.Add(
-                        new Player()
-                        {
-                            m_color = color,
-                            m_control = (dynamic)player["m_control"],
-                            m_handicap = (dynamic)player["m_handicap"],
-                            m_hero = Encoding.UTF8.GetString((dynamic)player["m_hero"]),
-                            m_name = Encoding.UTF8.GetString((dynamic)player["m_name"]),
-                            m_observe = (dynamic)player["m_observe"],
-                            m_race = Encoding.UTF8.GetString((dynamic)player["m_race"]),
-                            m_result = (dynamic)player["m_result"],
-                            m_teamId = (dynamic)player["m_teamId"],
-                            m_toon = handle,
-                            m_workingSetSlotId = (dynamic)player["m_workingSetSlotId"],
-                        }
-                        );
-
+                    m_playerList.Add(new Player(player));
                 }
 
+            }
+        }
+        public abstract class Message
+        {
+            public int EventId;
+            public int GameLoop;
+            public int UserId;
+
+            protected Message(PyDictionary message)
+            {
+                EventId = (int)((BigInteger)message["_eventid"]);
+                GameLoop = (int)((BigInteger)message["_gameloop"]);
+                UserId = (int)((BigInteger)((PyDictionary)message["_userid"])["m_userId"]);
+            }
+            public override string ToString()
+            {
+                return $"[{GetType().Name}] EventId:{EventId} GameLoop:{GameLoop} UserId:{UserId}";
+            }
+            public static List<Message> Parse(IEnumerable<PyDictionary> MessageEvents)
+            {
+                List<Message> result = new List<Message>();
+                foreach (var e in MessageEvents)
+                {
+                    switch (e["_event"])
+                    {
+                        case "NNet.Game.SChatMessage":
+                            result.Add(new ChatMessage(e)); 
+                            break;
+                        case "NNet.Game.SPingMessage":
+                            result.Add(new PingMessage(e)); 
+                            break;
+                        case "NNet.Game.SLoadingProgressMessage":
+                            result.Add(new LoadingProgressMessage(e));
+                            break;
+                        case "NNet.Game.SServerPingMessage":
+                            result.Add(new ServerPingMessage(e));
+                            break;
+                        case "NNet.Game.SReconnectNotifyMessage":
+                            result.Add(new ReconnectNotifyMessage(e));
+                            break;
+                    }
+                }
+                return result;
+            }
+
+            public class ChatMessage : Message
+            {
+                public string Content;
+                public ChatMessage(PyDictionary message) : base(message)
+                {
+                    Content = Encoding.UTF8.GetString((dynamic)message["m_string"]);
+                }
+                public override string ToString()
+                {
+                    return $"{base.ToString()} Message:{Content}";
+                }
+            }
+
+            public class PingMessage : Message 
+            {
+                public PingMessage(PyDictionary message) : base(message)
+                {
+
+                }
+            }
+
+            public class LoadingProgressMessage : Message 
+            {
+                public int Progress;
+
+                public LoadingProgressMessage(PyDictionary message) : base(message)
+                {
+                    Progress = (int)((BigInteger)message["m_progress"]);
+
+                }
+                public override string ToString()
+                {
+                    return $"{base.ToString()} Progress:{Progress}";
+                }
+            }
+
+            public class ServerPingMessage : Message
+            {
+                public ServerPingMessage(PyDictionary message) : base(message)
+                {
+                }
+            }
+
+            public class ReconnectNotifyMessage : Message 
+            {
+                public ReconnectNotifyMessage(PyDictionary message) : base(message)
+                {
+                }
             }
         }
     }
