@@ -222,7 +222,7 @@ namespace SC2Protocol
             return dict.ContainsKey(tag);
         }
     }
-    public class Parser
+    class Parser
     {
         List<Token> Tokens;
         public Parser(string code)
@@ -645,7 +645,7 @@ namespace SC2Protocol
         public PyDictionary _choice(PyTuple bounds, PyDictionary fields)
         {
             var tag = self._int(bounds);
-            if (fields.ContainsKey(tag))
+            if (!fields.ContainsKey(tag))
                 throw new Exception("CorruptedError");
             var field = (PyEnumerableObject)fields[tag];
             return new PyDictionary() { { field[0], self.instance((BigInteger)field[1]) } };
@@ -656,7 +656,7 @@ namespace SC2Protocol
         }
         public BigInteger _int(PyTuple bounds)
         {
-            return (BigInteger)bounds[0] + self._buffer.read_bits((int)bounds[1]);
+            return (BigInteger)bounds[0] + self._buffer.read_bits(((int)((BigInteger)bounds[1])));
         }
         public object _null()
         {
@@ -677,7 +677,7 @@ namespace SC2Protocol
         {
             return BitConverter.ToSingle(self._buffer.read_unaligned_bytes(8), 0);
         }
-        public PyDictionary _struct(PyDictionary fields)
+        public PyDictionary _struct(PyList fields)
         {
             PyDictionary result = new PyDictionary();
 
@@ -957,7 +957,7 @@ namespace SC2Protocol
         public int game_details_typeid;
         public int replay_initdata_typeid;
         public static Dictionary<int, S2Protocol> Build;
-
+        public static S2Protocol Latest;
         static S2Protocol()
         {
             Build = new Dictionary<int, S2Protocol>();
@@ -973,6 +973,7 @@ namespace SC2Protocol
                 // 使用反射创建子类实例
                 var instance = Activator.CreateInstance(subclass) as S2Protocol;
             }
+            Latest = Build[Build.Keys.Max()];
         }
         public BigInteger _varuint32_value(PyDictionary value)
         {
@@ -1140,6 +1141,50 @@ namespace SC2Protocol
             public BigInteger m_teamId;
             public Handle m_toon;
             public BigInteger m_workingSetSlotId;
+        }
+
+        public struct Header
+        {
+            public struct Version
+            {
+                public BigInteger m_flags;
+                public BigInteger m_major;
+                public BigInteger m_minor;
+                public BigInteger m_revision;
+                public BigInteger m_build;
+                public BigInteger m_baseBuild;
+
+            }
+            public byte[] m_signature;
+            public Version m_version;
+            public BigInteger m_type;
+            public BigInteger m_elapsedGameLoops;
+            public bool m_useScaledTime;
+            public PyDictionary m_ngdpRootKey;
+            public BigInteger m_dataBuildNum;
+            public PyDictionary m_replayCompatibilityHash;
+            public bool m_ngdpRootKeyIsDevData;
+            public Header(PyDictionary Structure)
+            {
+                m_signature= (dynamic)Structure["m_signature"];
+                PyDictionary pyversion= (dynamic)Structure["m_version"];
+                m_version = new Version()
+                {
+                    m_flags = (dynamic)pyversion["m_flags"],
+                    m_major = (dynamic)pyversion["m_major"],
+                    m_minor = (dynamic)pyversion["m_minor"],
+                    m_revision = (dynamic)pyversion["m_revision"],
+                    m_build = (dynamic)pyversion["m_build"],
+                    m_baseBuild = (dynamic)pyversion["m_baseBuild"],
+                };
+                m_type = (dynamic)Structure["m_type"];
+                m_elapsedGameLoops = (dynamic)Structure["m_elapsedGameLoops"];
+                m_useScaledTime = (dynamic)Structure["m_useScaledTime"];
+                m_ngdpRootKey = (dynamic)Structure["m_ngdpRootKey"];
+                m_dataBuildNum = (dynamic)Structure["m_dataBuildNum"];
+                m_replayCompatibilityHash = (dynamic)Structure["m_replayCompatibilityHash"];
+                m_ngdpRootKeyIsDevData = (dynamic)Structure["m_ngdpRootKeyIsDevData"];
+            }
         }
         public class Details
         {
