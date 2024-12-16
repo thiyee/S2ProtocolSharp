@@ -513,18 +513,22 @@ namespace SC2Protocol
         {
             _nextBits = 0;
         }
-
         public byte[] read_aligned_bytes(BigInteger bytes)
         {
-            if (bytes > int.MaxValue) throw new InvalidOperationException("Length OutofRange.");
+            if (bytes > int.MaxValue)
+                throw new InvalidOperationException("Length OutofRange.");
+
             int lbytes = (int)bytes;
             byte_align();
-            if (_used + bytes > _data.Length)
-            {
+
+            if (_used + lbytes > _data.Length)
                 throw new InvalidOperationException("Buffer is truncated.");
-            }
-            var result = _data.Skip(_used).Take(lbytes).ToArray();
+
+            var result = new byte[lbytes];
+            Array.Copy(_data, _used, result, 0, lbytes);
+
             _used += lbytes;
+
             return result;
         }
         public BigInteger read_bits(BigInteger bits)
@@ -656,7 +660,9 @@ namespace SC2Protocol
         }
         public BigInteger _int(PyTuple bounds)
         {
-            return (BigInteger)bounds[0] + self._buffer.read_bits(((int)((BigInteger)bounds[1])));
+            BigInteger min = (dynamic)bounds[0];
+            BigInteger max = (dynamic)bounds[1];
+            return min + self._buffer.read_bits((int)max);
         }
         public object _null()
         {
@@ -979,13 +985,13 @@ namespace SC2Protocol
         {
             foreach (var v in value.Values)
             {
-                return (BigInteger)v ;
+                return (BigInteger)v;
             }
             return 0;
         }
         public IEnumerable<PyDictionary> _decode_event_stream(BitPackedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
         {
-            BigInteger gameloop = 0; 
+            BigInteger gameloop = 0;
             List<PyDictionary> result = new List<PyDictionary>();
             while (!decoder.done())
             {
@@ -1010,7 +1016,6 @@ namespace SC2Protocol
                 decoder.byte_align();
                 @event["_bits"] = decoder.used_bits() - start_bits;
                 result.Add(@event);
-                //yield return @event;
             }
             return result;
         }
@@ -1113,7 +1118,8 @@ namespace SC2Protocol
             public byte m_g;
             public byte m_b;
 
-            public Color(PyDictionary color){
+            public Color(PyDictionary color)
+            {
                 m_a = (byte)(BigInteger)(color["m_a"]);
                 m_r = (byte)(BigInteger)(color["m_r"]);
                 m_g = (byte)(BigInteger)(color["m_g"]);
@@ -1186,7 +1192,7 @@ namespace SC2Protocol
                 public BigInteger m_build;
                 public BigInteger m_baseBuild;
 
-                public Version(PyDictionary ersion) 
+                public Version(PyDictionary ersion)
                 {
                     m_flags = (dynamic)ersion["m_flags"];
                     m_major = (dynamic)ersion["m_major"];
@@ -1207,7 +1213,7 @@ namespace SC2Protocol
             public bool m_ngdpRootKeyIsDevData;
             public Header(PyDictionary Structure)
             {
-                m_signature= (dynamic)Structure["m_signature"];
+                m_signature = (dynamic)Structure["m_signature"];
                 m_version = new Version((dynamic)Structure["m_version"]);
                 m_type = (dynamic)Structure["m_type"];
                 m_elapsedGameLoops = (dynamic)Structure["m_elapsedGameLoops"];
@@ -1287,10 +1293,10 @@ namespace SC2Protocol
                     switch (e["_event"])
                     {
                         case "NNet.Game.SChatMessage":
-                            result.Add(new ChatMessage(e)); 
+                            result.Add(new ChatMessage(e));
                             break;
                         case "NNet.Game.SPingMessage":
-                            result.Add(new PingMessage(e)); 
+                            result.Add(new PingMessage(e));
                             break;
                         case "NNet.Game.SLoadingProgressMessage":
                             result.Add(new LoadingProgressMessage(e));
@@ -1319,7 +1325,7 @@ namespace SC2Protocol
                 }
             }
 
-            public class PingMessage : Message 
+            public class PingMessage : Message
             {
                 public PingMessage(PyDictionary message) : base(message)
                 {
@@ -1327,7 +1333,7 @@ namespace SC2Protocol
                 }
             }
 
-            public class LoadingProgressMessage : Message 
+            public class LoadingProgressMessage : Message
             {
                 public int Progress;
 
@@ -1349,11 +1355,26 @@ namespace SC2Protocol
                 }
             }
 
-            public class ReconnectNotifyMessage : Message 
+            public class ReconnectNotifyMessage : Message
             {
                 public ReconnectNotifyMessage(PyDictionary message) : base(message)
                 {
                 }
+            }
+        }
+        public abstract class Event
+        {
+            public static List<Message> Parse(IEnumerable<PyDictionary> MessageEvents)
+            {
+                List<Message> result = new List<Message>();
+                foreach (var e in MessageEvents)
+                {
+                    switch (e["_event"])
+                    {
+
+                    }
+                }
+                return result;
             }
         }
     }
@@ -1476,7 +1497,7 @@ public class Protocol{version} : S2Protocol{{
         if(!Build.ContainsKey({version})) Build.Add({version}, this);
     }}
 }}";
-                
+
                 File.AppendAllText("versions.cs", code);
             }
         }
