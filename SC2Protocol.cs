@@ -7,15 +7,14 @@ using System.Collections;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Reflection;
+using System.Threading.Tasks;
+using System.Runtime;
 
 namespace SC2Protocol
 {
     public abstract class PyEnumerableObject : IEnumerable<object>
     {
-        // 实现 GetEnumerator 方法
         public abstract IEnumerator<object> GetEnumerator();
-
-        // 这通常是为了支持 foreach 或其他迭代操作，返回 IEnumerator
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public abstract object this[object index] { get; set; }
     }
@@ -38,41 +37,36 @@ namespace SC2Protocol
         {
             get
             {
-                // 如果 index 是 BigInteger，转换为 int
-                if (index is BigInteger bigIndex)
+                if (index is long bigIndex)
                 {
-                    // 确保 BigInteger 在 int 范围内
                     if (bigIndex >= int.MinValue && bigIndex <= int.MaxValue)
                     {
                         return objects[(int)bigIndex];
                     }
                     else
                     {
-                        throw new ArgumentOutOfRangeException("index", "BigInteger value is out of range for an int.");
+                        throw new ArgumentOutOfRangeException("index", "long value is out of range for an int.");
                     }
                 }
 
-                // 如果 index 已经是 int 类型
                 if (index is int intIndex)
                 {
                     return objects[intIndex];
                 }
 
-                throw new ArgumentException("Index must be either int or BigInteger.");
+                throw new ArgumentException("Index must be either int or long.");
             }
             set
             {
-                // 如果 index 是 BigInteger，转换为 int
-                if (index is BigInteger bigIndex)
+                if (index is long bigIndex)
                 {
-                    // 确保 BigInteger 在 int 范围内
                     if (bigIndex >= int.MinValue && bigIndex <= int.MaxValue)
                     {
                         objects[(int)bigIndex] = value;
                     }
                     else
                     {
-                        throw new ArgumentOutOfRangeException("index", "BigInteger value is out of range for an int.");
+                        throw new ArgumentOutOfRangeException("index", "long value is out of range for an int.");
                     }
                 }
                 else if (index is int intIndex)
@@ -81,7 +75,7 @@ namespace SC2Protocol
                 }
                 else
                 {
-                    throw new ArgumentException("Index must be either int or BigInteger.");
+                    throw new ArgumentException("Index must be either int or long.");
                 }
             }
         }
@@ -222,6 +216,21 @@ namespace SC2Protocol
             return dict.ContainsKey(tag);
         }
     }
+    public enum BaseType
+    {
+        _array,
+        _bitarray,
+        _blob,
+        _bool,
+        _choice,
+        _fourcc,
+        _int,
+        _null,
+        _optional,
+        _real32,
+        _real64,
+        _struct,
+    }
     class Parser
     {
         List<Token> Tokens;
@@ -325,7 +334,7 @@ namespace SC2Protocol
                         PeekPosition++;
                     }
                     ;
-                    var Value = BigInteger.Parse(Literal);
+                    var Value = long.Parse(Literal);
                     Position = PeekPosition - 1;
                     return new Token(SyntaxKind.NumericLiteral, Literal, Value);
                 }
@@ -381,7 +390,7 @@ namespace SC2Protocol
         {
             PyEnumerableObject pyObject = null;
             Stack<PyEnumerableObject> objectStack = new Stack<PyEnumerableObject>();
-            object key = null;  // Store the key for the dictionary
+            object key = null;  
             object value = null;
             for (int i = 0; i < Tokens.Count; i++)
             {
@@ -479,66 +488,61 @@ namespace SC2Protocol
     public class BitPackedBuffer
     {
         private byte[] _data;
-        private int _used;
-        private int? _next;
-        private int _nextBits;
+        private long _usedbytes;
+        private long? _next;
+        private long _nextBits;
         private bool _bigEndian;
 
         public BitPackedBuffer(byte[] contents, string endian = "big")
         {
             _data = contents ?? Array.Empty<byte>();
-            _used = 0;
+            _usedbytes = 0;
             _next = null;
             _nextBits = 0;
             _bigEndian = (endian == "big");
         }
-
+        public BitPackedBuffer(byte[] contents, long BitPosition, string endian = "big")
+        {
+            _data = contents ?? Array.Empty<byte>();
+            _usedbytes = 0;
+            _next = null;
+            _nextBits = 0;
+            _bigEndian = (endian == "big");
+        }
         public override string ToString()
         {
-            string s = (_used < _data.Length) ? _data[_used].ToString("X2") : "--";
-            return $"buffer({(_nextBits != 0 ? (_next ?? 0) : 0):X2}/{_nextBits},[{_used}]={s})";
+            string s = (_usedbytes < _data.Length) ? _data[_usedbytes].ToString("X2") : "--";
+            return $"buffer({(_nextBits != 0 ? (_next ?? 0) : 0):X2}/{_nextBits},[{_usedbytes}]={s})";
         }
-
         public bool done()
         {
-            return _nextBits == 0 && _used >= _data.Length;
+            return _nextBits == 0 && _usedbytes >= _data.Length;
         }
-
-        public int used_bits()
+        public long used_bits()
         {
-            return _used * 8 - _nextBits;
+            return _usedbytes * 8 - _nextBits;
         }
-
         public void byte_align()
         {
             _nextBits = 0;
         }
-        public byte[] read_aligned_bytes(BigInteger bytes)
+        public byte[] read_aligned_bytes(long bytes)
         {
-            if (bytes > int.MaxValue)
-                throw new InvalidOperationException("Length OutofRange.");
-
-            int lbytes = (int)bytes;
             byte_align();
-
-            if (_used + lbytes > _data.Length)
+            if (_usedbytes + bytes > _data.Length)
                 throw new InvalidOperationException("Buffer is truncated.");
 
-            var result = new byte[lbytes];
-            Array.Copy(_data, _used, result, 0, lbytes);
-
-            _used += lbytes;
-
+            var result = new byte[bytes];
+            Array.Copy(_data, _usedbytes, result, 0, bytes);
+            _usedbytes += bytes;
             return result;
         }
-        public BigInteger read_bits(BigInteger bits)
+        public long read_bits(long bits)
         {
-            if (bits > int.MaxValue) throw new InvalidOperationException("Length OutofRange.");
-            int lbits = (int)bits;
-            BigInteger result = 0; // 使用 BigInteger 类型
-            int resultBits = 0;
+            long result = 0;
+            long resultBits = 0;
 
-            while (resultBits != lbits)
+            while (resultBits != bits)
             {
                 if (_nextBits == 0)
                 {
@@ -546,32 +550,34 @@ namespace SC2Protocol
                     {
                         throw new InvalidOperationException("Buffer is truncated.");
                     }
-                    _next = _data[_used++];
-                    _nextBits = 8;
+
+                    _next = _data[_usedbytes++];
+                    _nextBits = 8; 
                 }
 
-                int copyBits = Math.Min(lbits - resultBits, _nextBits);
-                int copy = (_next.Value & ((1 << copyBits) - 1));
+                var copyBits = Math.Min(bits - resultBits, _nextBits);
+                var copy = (_next.Value & ((1L << (int)copyBits) - 1));
 
                 if (_bigEndian)
                 {
-                    result |= (BigInteger)copy << (lbits - resultBits - copyBits); // 使用 BigInteger 类型
+                    result |= copy << (int)(bits - resultBits - copyBits);
                 }
                 else
                 {
-                    result |= (BigInteger)copy << resultBits; // 使用 BigInteger 类型
+                    result |= copy << (int)resultBits;
                 }
 
-                _next >>= copyBits;
+                _next >>= (int)copyBits;
                 _nextBits -= copyBits;
                 resultBits += copyBits;
             }
 
             return result;
         }
-        public byte[] read_unaligned_bytes(BigInteger bytes)
+        public byte[] read_unaligned_bytes(long bytes)
         {
-            if (bytes > int.MaxValue) throw new InvalidOperationException("Length OutofRange.");
+            if (bytes > int.MaxValue)
+                throw new InvalidOperationException("Length OutofRange.");
             int lbytes = (int)bytes;
 
             var result = new byte[lbytes];
@@ -581,32 +587,108 @@ namespace SC2Protocol
             }
             return result;
         }
+
+        public void skip_aligned_bytes(int bytes)
+        {
+            byte_align();
+            if (_usedbytes + bytes > _data.Length)
+            {
+                throw new InvalidOperationException("Buffer is truncated.");
+            }
+            _usedbytes += bytes; 
+        }
+        public void skip_unaligned_bytes(int bytes)
+        {
+            skip_bits(bytes * 8);
+        }
+        public void skip_bits(long bits)
+        {
+            long skippedBits = 0;
+            while (skippedBits != bits)
+            {
+                if (_nextBits == 0)
+                {
+                    if (done())
+                    {
+                        throw new InvalidOperationException("Buffer is truncated.");
+                    }
+                    _next = _data[_usedbytes++];
+                    _nextBits = 8;
+                }
+
+                long copyBits = Math.Min(bits - skippedBits, _nextBits);
+
+                _next >>= (int)copyBits;
+                _nextBits -= copyBits;
+                skippedBits += copyBits;
+            }
+        }
+
+        public void seek(long bitPosition)
+        {
+            if (bitPosition < 0 || bitPosition > _data.Length * 8)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bitPosition), "Bit position is out of range.");
+            }
+
+            long byteIndex = bitPosition / 8;
+            long bitOffset = bitPosition % 8;
+
+            _usedbytes = byteIndex;
+
+            if (bitOffset == 0)
+            {
+                _next = null;
+                _nextBits = 0;
+            }
+            else
+            {
+                _next = _data[byteIndex] >> (int)bitOffset;
+                _nextBits = 8 - bitOffset;
+            }
+        }
+
     }
     public class BitPackedDecoder
     {
         private BitPackedBuffer _buffer;
         private PyList _typeinfos;
+        Func<PyEnumerableObject, object>[] QuickMethodCache;
         private BitPackedDecoder self => this;
         public BitPackedDecoder(byte[] contents, PyList typeInfos)
         {
             _buffer = new BitPackedBuffer(contents);
             _typeinfos = typeInfos;
+            QuickMethodCache = new Func<PyEnumerableObject, object>[]
+            {
+                args => _array((PyTuple)args[0], (long)args[1]),
+                args => _bitarray((PyTuple)args[0]),
+                args => _blob((PyTuple)args[0]),
+                args => _bool(),
+                args => _choice((PyTuple)args[0], (PyDictionary)args[1]),
+                args => _fourcc(),
+                args => _int((PyTuple)args[0]),
+                args => _null(),
+                args => _optional((long)args[0]),
+                args => _real32(),
+                args => _real64(),
+                args => _struct((PyList)args[0])
+            };
         }
         public override string ToString()
         {
             return _buffer.ToString();
         }
-        public object instance(BigInteger typeId)
+        public object instance(long typeId)
         {
-            if (typeId >= _typeinfos.Count)
-            {
-                throw new InvalidOperationException("Invalid type ID.");
-            }
+            //if (typeId >= _typeinfos.Count)
+            //{
+            //    throw new InvalidOperationException("Invalid type ID.");
+            //}
             var typeInfo = (PyEnumerableObject)_typeinfos[typeId];
-            var Method = GetType().GetMethod((string)typeInfo[0]);
-            return Method.Invoke(this, ((PyEnumerableObject)typeInfo[1]).ToArray());
+            return QuickMethodCache[(int)(BaseType)typeInfo[0]]((PyEnumerableObject)typeInfo[1]);
         }
-        public object instance(int typeId) => instance((BigInteger)typeId);
+        public object instance(int typeId) => instance((long)typeId);
         public void byte_align()
         {
             _buffer.byte_align();
@@ -615,12 +697,11 @@ namespace SC2Protocol
         {
             return _buffer.done();
         }
-        public int used_bits()
+        public long used_bits()
         {
             return _buffer.used_bits();
         }
-
-        public PyList _array(PyTuple bounds, BigInteger typeid)
+        public PyList _array(PyTuple bounds, long typeid)
         {
             var length = self._int(bounds);
             var result = new PyList();
@@ -643,32 +724,28 @@ namespace SC2Protocol
         }
         public bool _bool()
         {
-            return self._int(new PyTuple(0, 1)) != 0;
+            return self._int(new PyTuple(0l, 1l)) != 0;
         }
-
         public PyDictionary _choice(PyTuple bounds, PyDictionary fields)
         {
             var tag = self._int(bounds);
             if (!fields.ContainsKey(tag))
                 throw new Exception("CorruptedError");
             var field = (PyEnumerableObject)fields[tag];
-            return new PyDictionary() { { field[0], self.instance((BigInteger)field[1]) } };
+            return new PyDictionary() { { field[0], self.instance((long)field[1]) } };
         }
         public byte[] _fourcc()
         {
             return self._buffer.read_unaligned_bytes(4);
         }
-        public BigInteger _int(PyTuple bounds)
-        {
-            BigInteger min = (dynamic)bounds[0];
-            BigInteger max = (dynamic)bounds[1];
-            return min + self._buffer.read_bits((int)max);
+        public long _int(PyTuple bounds){
+            return (long)bounds[0] + self._buffer.read_bits((long)bounds[1]);
         }
         public object _null()
         {
             return null;
         }
-        public object _optional(BigInteger typeid)
+        public object _optional(long typeid)
         {
             var exists = self._bool();
             if (exists)
@@ -686,59 +763,167 @@ namespace SC2Protocol
         public PyDictionary _struct(PyList fields)
         {
             PyDictionary result = new PyDictionary();
-
             foreach (PyEnumerableObject field in fields)
             {
-                if (field[0] is string s && s == "__parent")
-                {
-                    var parent = self.instance((BigInteger)field[1]);
-                    if (parent is PyDictionary parentDict)
-                    {
-                        foreach (var key in parentDict)
-                        {
-                            result[key] = parentDict[key];
-                        }
-                    }
-                    else if (fields.Count == 1)
-                        return parent as PyDictionary ?? new PyDictionary();
-                    else
-                        result[field[0]] = parent;
-                }
-                else
-                    result[field[0]] = self.instance((BigInteger)field[1]);
-
+                //if (field[0] is string s && s == "__parent")
+                //{
+                //    var parent = self.instance((long)field[1]);
+                //    if (parent is PyDictionary parentDict)
+                //    {
+                //        foreach (var key in parentDict)
+                //        {
+                //            result[key] = parentDict[key];
+                //        }
+                //    }
+                //    else if (fields.Count == 1)
+                //        return parent as PyDictionary ?? new PyDictionary();
+                //    else
+                //        result[field[0]] = parent;
+                //}
+                //else
+                    result[(string)field[0]] = self.instance((long)field[1]);
+            
             }
 
             return result;
         }
+        public void skip_instance(long typeId)
+        {
+            if (typeId >= _typeinfos.Count)
+            {
+                throw new InvalidOperationException("Invalid type ID.");
+            }
 
+            var typeInfo = (PyEnumerableObject)_typeinfos[typeId];
+            BaseType methodName = (BaseType)typeInfo[0];
+            var methodArgs = (PyEnumerableObject)typeInfo[1];
 
+            switch (methodName)
+            {
+                case BaseType._array:
+                    var arrayBounds = (PyTuple)methodArgs[0];
+                    var typeid = (long)methodArgs[1];
+                    var arrayLength = _int(arrayBounds);
+                    for (int i = 0; i < arrayLength; i++)
+                    {
+                        skip_instance(typeid); 
+                    }
+                    break;
+
+                case BaseType._bitarray:
+                    var bitarrayBounds = (PyTuple)methodArgs[0];
+                    _buffer.skip_bits((int)_int(bitarrayBounds));
+                    break;
+                case BaseType._blob:
+                    var blobBounds = (PyTuple)methodArgs[0];
+                    _buffer.skip_aligned_bytes((int)self._int(blobBounds));
+                    break;
+                case BaseType._bool:
+                    _buffer.skip_bits(1);
+                    break;
+                case BaseType._choice:
+                    var choiceBounds = (PyTuple)methodArgs[0];
+                    var choiceFields = (PyDictionary)methodArgs[1];
+                    var tag = _int(choiceBounds);
+                    if (!choiceFields.ContainsKey(tag))
+                    {
+                        throw new Exception("CorruptedError");
+                    }
+
+                    var selectedField = (PyEnumerableObject)choiceFields[tag];
+                    var fieldTypeId1 = (long)selectedField[1];
+
+                    skip_instance(fieldTypeId1);
+                    break;
+
+                case BaseType._fourcc:
+                    _buffer.skip_unaligned_bytes(4);
+                    break;
+                case BaseType._int:
+                    var intBounds = (PyTuple)methodArgs[0];
+                    var max = (long)intBounds[1];
+                    _buffer.skip_bits((int)max);
+                    break;
+                case BaseType._null:
+                    break;
+                case BaseType._optional:
+                    var exists = self._bool();
+                    if (exists)
+                        self.skip_instance((long)methodArgs[0]);
+                    break;
+                case BaseType._real32:
+                    _buffer.skip_unaligned_bytes(4);
+                    break;
+
+                case BaseType._real64:
+                    _buffer.skip_unaligned_bytes(8);
+                    break;
+                case BaseType._struct:
+                    var fields = (PyList)methodArgs[0];
+                    foreach (PyEnumerableObject field in fields)
+                    {
+                        if (field[0] is string s && s == "__parent")
+                        {
+                            var parentTypeId = (long)field[1];
+                            skip_instance(parentTypeId); 
+                        }
+                        else
+                        {
+                            var fieldTypeId = (long)field[1];
+                            skip_instance(fieldTypeId); 
+                        }
+                    }
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown type method: {methodName}");
+            }
+        }
+
+        internal void seek(long v)
+        {
+            _buffer.seek(v);
+        }
     }
     public class VersionedDecoder
     {
         private BitPackedBuffer _buffer;
         private PyList _typeinfos;
+        Func<PyEnumerableObject, object>[] QuickMethodCache;
         private VersionedDecoder self => this;
         public VersionedDecoder(byte[] contents, PyList typeinfos)
         {
             self._buffer = new BitPackedBuffer(contents);
             self._typeinfos = typeinfos;
+            QuickMethodCache = new Func<PyEnumerableObject, object>[]
+            {
+                args => _array((PyTuple)args[0], (long)args[1]),
+                args => _bitarray((PyTuple)args[0]),
+                args => _blob((PyTuple)args[0]),
+                args => _bool(),
+                args => _choice((PyTuple)args[0], (PyDictionary)args[1]),
+                args => _fourcc(),
+                args => _int((PyTuple)args[0]),
+                args => _null(),
+                args => _optional((long)args[0]),
+                args => _real32(),
+                args => _real64(),
+                args => _struct((PyList)args[0])
+            };
         }
         public override string ToString()
         {
             return _buffer.ToString();
         }
-        public object instance(BigInteger typeId)
+        public object instance(long typeId)
         {
             if (typeId >= _typeinfos.Count)
             {
                 throw new InvalidOperationException("Invalid type ID.");
             }
             var typeInfo = (PyEnumerableObject)_typeinfos[typeId];
-            var Method = GetType().GetMethod((string)typeInfo[0]);
-            return Method.Invoke(this, ((PyEnumerableObject)typeInfo[1]).ToArray());
+            return QuickMethodCache[(int)(BaseType)typeInfo[0]]((PyEnumerableObject)typeInfo[1]);
         }
-        public object instance(int typeId) => instance((BigInteger)typeId);
+        public object instance(int typeId) => instance((long)typeId);
 
         public void byte_align()
         {
@@ -748,16 +933,16 @@ namespace SC2Protocol
         {
             return self._buffer.done();
         }
-        public int used_bits()
+        public long used_bits()
         {
             return self._buffer.used_bits();
         }
-        public void _expect_skip(BigInteger expected)
+        public void _expect_skip(long expected)
         {
             if (self._buffer.read_bits(8) != expected)
                 throw new Exception("CorruptedError");
         }
-        public BigInteger _vint()
+        public long _vint()
         {
             var b = self._buffer.read_bits(8);
             var negative = (b & 1) != 0;
@@ -771,7 +956,7 @@ namespace SC2Protocol
             }
             return negative ? -result : result;
         }
-        public PyList _array(PyTuple bounds, BigInteger typeid)
+        public PyList _array(PyTuple bounds, long typeid)
         {
             self._expect_skip(0);
             var length = self._vint();
@@ -807,14 +992,14 @@ namespace SC2Protocol
                 return new PyDictionary();
             }
             var field = (PyEnumerableObject)fields[tag];
-            return new PyDictionary() { { field[0], self.instance((BigInteger)field[1]) } };
+            return new PyDictionary() { { field[0], self.instance((long)field[1]) } };
         }
         public byte[] _fourcc()
         {
             self._expect_skip(7);
             return self._buffer.read_aligned_bytes(4);
         }
-        public BigInteger _int(PyTuple bounds)
+        public long _int(PyTuple bounds)
         {
             self._expect_skip(9);
             return self._vint();
@@ -823,7 +1008,7 @@ namespace SC2Protocol
         {
             return null;
         }
-        public object _optional(BigInteger typeid)
+        public object _optional(long typeid)
         {
             self._expect_skip(4);
             var exists = self._buffer.read_bits(8) != 0;
@@ -947,7 +1132,6 @@ namespace SC2Protocol
             }
         }
     }
-
     public abstract class S2Protocol
     {
         public PyList typeinfos;
@@ -968,30 +1152,30 @@ namespace SC2Protocol
         {
             Build = new Dictionary<int, S2Protocol>();
 
-            // 获取当前程序集中的所有类型
             var types = Assembly.GetExecutingAssembly().GetTypes();
 
-            // 筛选所有继承自 S2Protocol 的非抽象类
             var subclasses = types.Where(t => t.IsSubclassOf(typeof(S2Protocol)) && !t.IsAbstract);
 
-            foreach (var subclass in subclasses)
-            {
-                // 使用反射创建子类实例
+            foreach (var subclass in subclasses){
                 var instance = Activator.CreateInstance(subclass) as S2Protocol;
+                for(int i = 0; i < instance.typeinfos.Count; i++){
+                    PyTuple tuple = instance.typeinfos[i] as PyTuple;
+                    tuple[0] = (BaseType)Enum.Parse(typeof(BaseType), (string)tuple[0]); 
+                }
             }
             Latest = Build[Build.Keys.Max()];
         }
-        public BigInteger _varuint32_value(PyDictionary value)
+        public long _varuint32_value(PyDictionary value)
         {
             foreach (var v in value.Values)
             {
-                return (BigInteger)v;
+                return (long)v;
             }
             return 0;
         }
-        public IEnumerable<PyDictionary> _decode_event_stream(BitPackedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
+        public List<PyDictionary> _decode_event_stream(BitPackedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
         {
-            BigInteger gameloop = 0;
+            long gameloop = 0;
             List<PyDictionary> result = new List<PyDictionary>();
             while (!decoder.done())
             {
@@ -1019,9 +1203,9 @@ namespace SC2Protocol
             }
             return result;
         }
-        public IEnumerable<PyDictionary> _decode_event_stream(VersionedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
+        public List<PyDictionary> _decode_event_stream(VersionedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
         {
-            BigInteger gameloop = 0;
+            long gameloop = 0;
             List<PyDictionary> result = new List<PyDictionary>();
             while (!decoder.done())
             {
@@ -1035,7 +1219,7 @@ namespace SC2Protocol
 
                 var typeid = (event_types[eventid] as PyEnumerableObject)?[0];
                 var typename = (event_types[eventid] as PyEnumerableObject)?[1];
-                if (typeid is null)
+                if (typeid is null) 
                     throw new Exception($"eventid({eventid}) at {decoder}");
                 PyDictionary @event = decoder.instance((dynamic)typeid);
                 @event["_event"] = typename;
@@ -1046,21 +1230,20 @@ namespace SC2Protocol
                 decoder.byte_align();
                 @event["_bits"] = decoder.used_bits() - start_bits;
                 result.Add(@event);
-                //yield return @event;
             }
             return result;
         }
-        public IEnumerable<PyDictionary> decode_replay_game_events(byte[] contents)
+        public List<PyDictionary> decode_replay_game_events(byte[] contents)
         {
             var decoder = new BitPackedDecoder(contents, typeinfos);
             return _decode_event_stream(decoder, game_eventid_typeid, game_event_types, true);
         }
-        public IEnumerable<PyDictionary> decode_replay_message_events(byte[] contents)
+        public List<PyDictionary> decode_replay_message_events(byte[] contents)
         {
             var decoder = new BitPackedDecoder(contents, typeinfos);
             return _decode_event_stream(decoder, message_eventid_typeid, message_event_types, true);
         }
-        public IEnumerable<PyDictionary> decode_replay_tracker_events(byte[] contents)
+        public List<PyDictionary> decode_replay_tracker_events(byte[] contents)
         {
             var decoder = new VersionedDecoder(contents, typeinfos);
             return _decode_event_stream(decoder, tracker_eventid_typeid, tracker_event_types, false);
@@ -1107,8 +1290,96 @@ namespace SC2Protocol
             }
             return attributes;
         }
-    }
 
+        public List<(long bitOffset, long gameloop)> _skip_event_stream(BitPackedDecoder decoder, int eventid_typeid, PyDictionary event_types, bool decode_user_id)
+        {
+            long gameloop = 0;
+            List<(long bitOffset, long gameloop)> result = new List<(long bitOffset, long gameloop)>();
+            while (!decoder.done())
+            {
+                var start_bits = decoder.used_bits();
+                var delta = _varuint32_value((PyDictionary)decoder.instance(svaruint32_typeid));
+                gameloop += delta;
+                if (decode_user_id)
+                {
+                    decoder.skip_instance(replay_userid_typeid);
+                }
+                var eventid = decoder.instance(eventid_typeid);
+                var typeid = (event_types[eventid] as PyEnumerableObject)?[0];
+                if (typeid is null)
+                    throw new Exception($"eventid({eventid}) at {decoder}");
+                decoder.skip_instance((dynamic)typeid);
+                decoder.byte_align();
+                result.Add((start_bits, gameloop));
+            }
+            return result;
+        }
+        public List<(long bitOffset, long gameloop)> skip_replay_game_events(byte[] contents)
+        {
+            return _skip_event_stream(
+                new BitPackedDecoder(contents, typeinfos),
+                game_eventid_typeid,
+                game_event_types,
+                true);
+        }
+
+        /// <summary>
+        /// 利用多线程来加速事件解析,比decode_replay_game_events快3到4倍
+        /// 解析回放文件中的replay.game.events
+        /// 注意:该过程可能会使用大量内存,并且GC回收内存时机是不确定的
+        /// 当你不使用返回值后,程序任然占用了大量的内存这是正常的,并非内存泄露 因为GC还没有回收内存
+        /// 因此 在你使用完返回值后 你可能需要主动调用GC.Collect();来回收内存
+        /// </summary>
+        /// <param name="contents">replay.game.events文件的字节数据</param>
+        /// <returns></returns>
+        public List<PyDictionary> quick_decode_replay_game_events(byte[] contents)
+        {
+            var bitOffsetGameloops = skip_replay_game_events(contents).ToArray();
+            int threadCount = Environment.ProcessorCount;
+            List<PyDictionary>[] results = new List<PyDictionary>[threadCount];
+            Parallel.For(0, threadCount, i =>
+            {
+                int start = i * (bitOffsetGameloops.Length / threadCount);
+                int end = (i == threadCount - 1) ? bitOffsetGameloops.Length : (i + 1) * (bitOffsetGameloops.Length / threadCount);
+                List<PyDictionary> threadResult = new List<PyDictionary>();
+                var decoder = new BitPackedDecoder(contents, typeinfos);
+                for (int j = start; j < end; j++)
+                {
+                    decoder.seek(bitOffsetGameloops[j].bitOffset);
+                    threadResult.Add(decode_event_stream_work(decoder, bitOffsetGameloops[j].gameloop));
+                }
+                results[i] = threadResult;
+            });
+            return results.SelectMany(r => r).ToList();
+        }
+
+        private PyDictionary decode_event_stream_work(BitPackedDecoder decoder,long gameloop)
+        {
+            var start_bits = decoder.used_bits();
+            decoder.skip_instance(svaruint32_typeid);
+            //var delta = _varuint32_value((PyDictionary)decoder.instance(svaruint32_typeid));
+            //gameloop += delta;
+            object userid = null;
+            userid = decoder.instance(replay_userid_typeid);
+            var eventid = decoder.instance(game_eventid_typeid);
+
+            var typeid = (game_event_types[eventid] as PyEnumerableObject)?[0];
+            var typename = (game_event_types[eventid] as PyEnumerableObject)?[1];
+            if (typeid is null)
+                throw new Exception($"eventid({eventid}) at {decoder}");
+            PyDictionary @event = decoder.instance((dynamic)typeid);
+            @event["_event"] = typename;
+            @event["_eventid"] = eventid;
+            @event["_gameloop"] = gameloop;
+            @event["_userid"] = userid;
+            decoder.byte_align();
+            @event["_bits"] = decoder.used_bits() - start_bits;
+
+            return @event;
+        }
+
+
+    }
     public class Replay
     {
         public struct Color
@@ -1120,10 +1391,10 @@ namespace SC2Protocol
 
             public Color(PyDictionary color)
             {
-                m_a = (byte)(BigInteger)(color["m_a"]);
-                m_r = (byte)(BigInteger)(color["m_r"]);
-                m_g = (byte)(BigInteger)(color["m_g"]);
-                m_b = (byte)(BigInteger)(color["m_b"]);
+                m_a = (byte)(long)(color["m_a"]);
+                m_r = (byte)(long)(color["m_r"]);
+                m_g = (byte)(long)(color["m_g"]);
+                m_b = (byte)(long)(color["m_b"]);
             }
 
             public override string ToString()
@@ -1133,19 +1404,25 @@ namespace SC2Protocol
         }
         public struct Handle
         {
-            public BigInteger m_region;
+            public long m_region;
             public string m_programId;
-            public BigInteger m_realm;
-            public BigInteger m_id;
+            public long m_realm;
+            public long m_id;
 
             public Handle(PyDictionary pyDictionary)
             {
                 m_region = (dynamic)pyDictionary["m_region"];
-                m_programId = Encoding.UTF8.GetString((dynamic)pyDictionary["m_programId"]);
+                m_programId = Encoding.UTF8.GetString((dynamic)pyDictionary["m_programId"]).Replace("\0", "");
                 m_realm = (dynamic)pyDictionary["m_realm"];
                 m_id = (dynamic)pyDictionary["m_id"];
             }
-
+            public Handle(String handle){
+                var s = handle.Split('-');
+                m_region = long.Parse(s[0]);
+                m_programId = s[1];
+                m_realm = long.Parse(s[2]);
+                m_id = long.Parse(s[3]);
+            }
             public override string ToString()
             {
                 return $"{m_region}-{m_programId}-{m_realm}-{m_id}";
@@ -1154,16 +1431,16 @@ namespace SC2Protocol
         public struct Player
         {
             public Color m_color;
-            public BigInteger m_control;
-            public BigInteger m_handicap;
+            public long m_control;
+            public long m_handicap;
             public string m_hero;
             public string m_name;
-            public BigInteger m_observe;
+            public long m_observe;
             public string m_race;
-            public BigInteger m_result;
-            public BigInteger m_teamId;
+            public long m_result;
+            public long m_teamId;
             public Handle m_toon;
-            public BigInteger m_workingSetSlotId;
+            public long m_workingSetSlotId;
 
             public Player(PyDictionary player)
             {
@@ -1179,18 +1456,22 @@ namespace SC2Protocol
                 m_teamId = (dynamic)player["m_teamId"];
                 m_workingSetSlotId = (dynamic)player["m_workingSetSlotId"];
             }
+            public override string ToString()
+            {
+                return $"{m_toon} {m_name}";
+            }
         }
 
         public struct Header
         {
             public struct Version
             {
-                public BigInteger m_flags;
-                public BigInteger m_major;
-                public BigInteger m_minor;
-                public BigInteger m_revision;
-                public BigInteger m_build;
-                public BigInteger m_baseBuild;
+                public long m_flags;
+                public long m_major;
+                public long m_minor;
+                public long m_revision;
+                public long m_build;
+                public long m_baseBuild;
 
                 public Version(PyDictionary ersion)
                 {
@@ -1204,11 +1485,11 @@ namespace SC2Protocol
             }
             public byte[] m_signature;
             public Version m_version;
-            public BigInteger m_type;
-            public BigInteger m_elapsedGameLoops;
+            public long m_type;
+            public long m_elapsedGameLoops;
             public bool m_useScaledTime;
             public PyDictionary m_ngdpRootKey;
-            public BigInteger m_dataBuildNum;
+            public long m_dataBuildNum;
             public PyDictionary m_replayCompatibilityHash;
             public bool m_ngdpRootKeyIsDevData;
             public Header(PyDictionary Structure)
@@ -1232,8 +1513,8 @@ namespace SC2Protocol
             public bool m_miniSave;
             public object m_modPaths;
             public bool m_restartAsTransitionMap;
-            public BigInteger m_timeLocalOffset;
-            public BigInteger m_timeUTC;
+            public long m_timeLocalOffset;
+            public long m_timeUTC;
             public string m_title;
             public Dictionary<string, string> m_thumbnail;
             public List<byte[]> m_cacheHandles;
@@ -1277,15 +1558,15 @@ namespace SC2Protocol
 
             protected Message(PyDictionary message)
             {
-                EventId = (int)((BigInteger)message["_eventid"]);
-                GameLoop = (int)((BigInteger)message["_gameloop"]);
-                UserId = (int)((BigInteger)((PyDictionary)message["_userid"])["m_userId"]);
+                EventId = (int)((long)message["_eventid"]);
+                GameLoop = (int)((long)message["_gameloop"]);
+                UserId = (int)((long)((PyDictionary)message["_userid"])["m_userId"]);
             }
             public override string ToString()
             {
                 return $"[{GetType().Name}] EventId:{EventId} GameLoop:{GameLoop} UserId:{UserId}";
             }
-            public static List<Message> Parse(IEnumerable<PyDictionary> MessageEvents)
+            public static List<Message> Parse(List<PyDictionary> MessageEvents)
             {
                 List<Message> result = new List<Message>();
                 foreach (var e in MessageEvents)
@@ -1324,7 +1605,6 @@ namespace SC2Protocol
                     return $"{base.ToString()} Message:{Content}";
                 }
             }
-
             public class PingMessage : Message
             {
                 public PingMessage(PyDictionary message) : base(message)
@@ -1332,14 +1612,13 @@ namespace SC2Protocol
 
                 }
             }
-
             public class LoadingProgressMessage : Message
             {
                 public int Progress;
 
                 public LoadingProgressMessage(PyDictionary message) : base(message)
                 {
-                    Progress = (int)((BigInteger)message["m_progress"]);
+                    Progress = (int)((long)message["m_progress"]);
 
                 }
                 public override string ToString()
@@ -1347,14 +1626,12 @@ namespace SC2Protocol
                     return $"{base.ToString()} Progress:{Progress}";
                 }
             }
-
             public class ServerPingMessage : Message
             {
                 public ServerPingMessage(PyDictionary message) : base(message)
                 {
                 }
             }
-
             public class ReconnectNotifyMessage : Message
             {
                 public ReconnectNotifyMessage(PyDictionary message) : base(message)
@@ -1364,38 +1641,250 @@ namespace SC2Protocol
         }
         public abstract class Event
         {
-            public static List<Message> Parse(IEnumerable<PyDictionary> MessageEvents)
+            public int EventId;
+            public int GameLoop;
+            public int UserId;
+            protected Event(PyDictionary message)
             {
-                List<Message> result = new List<Message>();
-                foreach (var e in MessageEvents)
+                EventId = (int)((long)message["_eventid"]);
+                GameLoop = (int)((long)message["_gameloop"]);
+                UserId = (int)((long)((PyDictionary)message["_userid"])["m_userId"]);
+            }
+            public class BankFileEvent : Event
+            {
+                string FileName;
+                public BankFileEvent(PyDictionary @event) : base(@event)
+                {
+                    FileName = Encoding.UTF8.GetString((dynamic)@event["m_name"]);
+                }
+                public override string ToString()
+                {
+                    return $"[{GetType().Name}] FileName:{FileName}";
+                }
+            }
+            public class BankSectionEvent : Event
+            {
+                string SectionName;
+                public BankSectionEvent(PyDictionary @event) : base(@event)
+                {
+                    SectionName = Encoding.UTF8.GetString((dynamic)@event["m_name"]);
+                }
+                public override string ToString()
+                {
+                    return $"[{GetType().Name}] SectionName:{SectionName}";
+                }
+            }
+            public class BankKeyEvent : Event{
+                string KeyName;
+                KeyType type;
+                string data;
+                public enum KeyType
+                {
+                    Fixed = 0,
+                    Flag = 1,
+                    Int = 2,
+                    String = 3,
+                    Unit = 4,
+                    Point = 5,
+                    Text = 6,
+                    Complex=7,
+                }
+                public BankKeyEvent(PyDictionary @event) : base(@event)
+                {
+                    KeyName = Encoding.UTF8.GetString((dynamic)@event["m_name"]);
+                    type = (KeyType)(long)@event["m_type"];
+                    data = Encoding.UTF8.GetString((dynamic)@event["m_data"]);
+                }
+                public override string ToString()
+                {
+                    return $"[{GetType().Name}] {KeyName} {type}={data}";
+                }
+            }
+            public class BankValueEvent : Event
+            {
+                string Name;
+                ValueType type;
+                object Value;
+                public enum ValueType
+                {
+                    Fixed = 0,
+                    Flag = 1,
+                    Int = 2,
+                    String = 3,
+                    Unit = 4,
+                    Point = 5,
+                    Text = 6,
+                }
+                public BankValueEvent(PyDictionary @event) : base(@event)
+                {
+                    Name = Encoding.UTF8.GetString((dynamic)@event["m_name"]);
+                    type = (ValueType)(long)@event["m_type"];
+                    
+                    string sValue= Encoding.UTF8.GetString((dynamic)@event["m_data"]);
+                    switch (type)
+                    {
+                        case ValueType.Fixed: Value =float.Parse(sValue) ; break;
+                        case ValueType.Flag: Value = sValue == "1";  break;
+                        case ValueType.Int: Value = Value = int.Parse(sValue); break;
+                        case ValueType.String: Value = sValue; break;
+                        case ValueType.Unit: Value = sValue; break;
+                        case ValueType.Point: Value = sValue; break;
+                        case ValueType.Text: Value = sValue; break;
+                        default: Value = @event["m_data"]; break;
+                    }
+
+
+                }
+                public override string ToString()
+                {
+                    return $"[{GetType().Name}] {Name} { type}={Value}";
+                }
+            }
+            public class BankSignatureEvent : Event
+            {
+                byte[] Signature;
+                Handle Handle;
+                public BankSignatureEvent(PyDictionary @event) : base(@event)
+                {
+                    Signature = ((PyList)@event["m_signature"]).Select(n => (byte)((long)n)).ToArray();
+                    Handle = new Handle(Encoding.UTF8.GetString((dynamic)@event["m_toonHandle"]));
+                }
+                public override string ToString()
+                {
+                    return $"[{GetType().Name}] {Handle} Signature:{BitConverter.ToString(Signature).Replace("-","")}";
+                }
+            }
+
+
+            public static List<Event> Parse(List<PyDictionary>GameEvents)
+            {
+                List<Event> result = new List<Event>();
+                foreach (var e in GameEvents)
                 {
                     switch (e["_event"])
                     {
-
+                        case "NNet.Game.SUserFinishedLoadingSyncEvent": break;
+                        case "NNet.Game.SUserOptionsEvent": break;
+                        case "NNet.Game.SBankFileEvent": result.Add(new BankFileEvent(e)); break;
+                        case "NNet.Game.SBankSectionEvent": result.Add(new BankSectionEvent(e)); break;
+                        case "NNet.Game.SBankKeyEvent": result.Add(new BankKeyEvent(e)); break;
+                        case "NNet.Game.SBankValueEvent": result.Add(new BankValueEvent(e)); break;
+                        case "NNet.Game.SBankSignatureEvent": result.Add(new BankSignatureEvent(e)); break;
+                        case "NNet.Game.SCameraSaveEvent": break;
+                        case "NNet.Game.SSaveGameEvent": break;
+                        case "NNet.Game.SSaveGameDoneEvent": break;
+                        case "NNet.Game.SLoadGameDoneEvent": break;
+                        case "NNet.Game.SCommandManagerResetEvent": break;
+                        case "NNet.Game.SGameCheatEvent": break;
+                        case "NNet.Game.SCmdEvent": break;
+                        case "NNet.Game.SSelectionDeltaEvent": break;
+                        case "NNet.Game.SControlGroupUpdateEvent": break;
+                        case "NNet.Game.SSelectionSyncCheckEvent": break;
+                        case "NNet.Game.SResourceTradeEvent": break;
+                        case "NNet.Game.STriggerChatMessageEvent": break;
+                        case "NNet.Game.SAICommunicateEvent": break;
+                        case "NNet.Game.SSetAbsoluteGameSpeedEvent": break;
+                        case "NNet.Game.SAddAbsoluteGameSpeedEvent": break;
+                        case "NNet.Game.STriggerPingEvent": break;
+                        case "NNet.Game.SBroadcastCheatEvent": break;
+                        case "NNet.Game.SAllianceEvent": break;
+                        case "NNet.Game.SUnitClickEvent": break;
+                        case "NNet.Game.SUnitHighlightEvent": break;
+                        case "NNet.Game.STriggerReplySelectedEvent": break;
+                        case "NNet.Game.SHijackReplayGameEvent": break;
+                        case "NNet.Game.STriggerSkippedEvent": break;
+                        case "NNet.Game.STriggerSoundLengthQueryEvent": break;
+                        case "NNet.Game.STriggerSoundOffsetEvent": break;
+                        case "NNet.Game.STriggerTransmissionOffsetEvent": break;
+                        case "NNet.Game.STriggerTransmissionCompleteEvent": break;
+                        case "NNet.Game.SCameraUpdateEvent": break;
+                        case "NNet.Game.STriggerAbortMissionEvent": break;
+                        case "NNet.Game.STriggerPurchaseMadeEvent": break;
+                        case "NNet.Game.STriggerPurchaseExitEvent": break;
+                        case "NNet.Game.STriggerPlanetMissionLaunchedEvent": break;
+                        case "NNet.Game.STriggerPlanetPanelCanceledEvent": break;
+                        case "NNet.Game.STriggerDialogControlEvent": break;
+                        case "NNet.Game.STriggerSoundLengthSyncEvent": break;
+                        case "NNet.Game.STriggerConversationSkippedEvent": break;
+                        case "NNet.Game.STriggerMouseClickedEvent": break;
+                        case "NNet.Game.STriggerMouseMovedEvent": break;
+                        case "NNet.Game.SAchievementAwardedEvent": break;
+                        case "NNet.Game.STriggerHotkeyPressedEvent": break;
+                        case "NNet.Game.STriggerTargetModeUpdateEvent": break;
+                        case "NNet.Game.STriggerPlanetPanelReplayEvent": break;
+                        case "NNet.Game.STriggerSoundtrackDoneEvent": break;
+                        case "NNet.Game.STriggerPlanetMissionSelectedEvent": break;
+                        case "NNet.Game.STriggerKeyPressedEvent": break;
+                        case "NNet.Game.STriggerMovieFunctionEvent": break;
+                        case "NNet.Game.STriggerPlanetPanelBirthCompleteEvent": break;
+                        case "NNet.Game.STriggerPlanetPanelDeathCompleteEvent": break;
+                        case "NNet.Game.SResourceRequestEvent": break;
+                        case "NNet.Game.SResourceRequestFulfillEvent": break;
+                        case "NNet.Game.SResourceRequestCancelEvent": break;
+                        case "NNet.Game.STriggerResearchPanelExitEvent": break;
+                        case "NNet.Game.STriggerResearchPanelPurchaseEvent": break;
+                        case "NNet.Game.STriggerResearchPanelSelectionChangedEvent": break;
+                        case "NNet.Game.STriggerCommandErrorEvent": break;
+                        case "NNet.Game.STriggerMercenaryPanelExitEvent": break;
+                        case "NNet.Game.STriggerMercenaryPanelPurchaseEvent": break;
+                        case "NNet.Game.STriggerMercenaryPanelSelectionChangedEvent": break;
+                        case "NNet.Game.STriggerVictoryPanelExitEvent": break;
+                        case "NNet.Game.STriggerBattleReportPanelExitEvent": break;
+                        case "NNet.Game.STriggerBattleReportPanelPlayMissionEvent": break;
+                        case "NNet.Game.STriggerBattleReportPanelPlaySceneEvent": break;
+                        case "NNet.Game.STriggerBattleReportPanelSelectionChangedEvent": break;
+                        case "NNet.Game.STriggerVictoryPanelPlayMissionAgainEvent": break;
+                        case "NNet.Game.STriggerMovieStartedEvent": break;
+                        case "NNet.Game.STriggerMovieFinishedEvent": break;
+                        case "NNet.Game.SDecrementGameTimeRemainingEvent": break;
+                        case "NNet.Game.STriggerPortraitLoadedEvent": break;
+                        case "NNet.Game.STriggerCustomDialogDismissedEvent": break;
+                        case "NNet.Game.STriggerGameMenuItemSelectedEvent": break;
+                        case "NNet.Game.STriggerMouseWheelEvent": break;
+                        case "NNet.Game.STriggerPurchasePanelSelectedPurchaseItemChangedEvent": break;
+                        case "NNet.Game.STriggerPurchasePanelSelectedPurchaseCategoryChangedEvent": break;
+                        case "NNet.Game.STriggerButtonPressedEvent": break;
+                        case "NNet.Game.STriggerGameCreditsFinishedEvent": break;
+                        case "NNet.Game.STriggerCutsceneBookmarkFiredEvent": break;
+                        case "NNet.Game.STriggerCutsceneEndSceneFiredEvent": break;
+                        case "NNet.Game.STriggerCutsceneConversationLineEvent": break;
+                        case "NNet.Game.STriggerCutsceneConversationLineMissingEvent": break;
+                        case "NNet.Game.SGameUserLeaveEvent": break;
+                        case "NNet.Game.SGameUserJoinEvent": break;
+                        case "NNet.Game.SCommandManagerStateEvent": break;
+                        case "NNet.Game.SCmdUpdateTargetPointEvent": break;
+                        case "NNet.Game.SCmdUpdateTargetUnitEvent": break;
+                        case "NNet.Game.STriggerAnimLengthQueryByNameEvent": break;
+                        case "NNet.Game.STriggerAnimLengthQueryByPropsEvent": break;
+                        case "NNet.Game.STriggerAnimOffsetEvent": break;
+                        case "NNet.Game.SCatalogModifyEvent": break;
+                        case "NNet.Game.SHeroTalentTreeSelectedEvent": break;
+                        case "NNet.Game.STriggerProfilerLoggingFinishedEvent": break;
+                        case "NNet.Game.SHeroTalentTreeSelectionPanelToggledEvent": break;
+                        case "NNet.Game.SSetSyncLoadingTimeEvent": break;
+                        case "NNet.Game.SSetSyncPlayingTimeEvent": break;
+                        case "NNet.Game.SPeerSetSyncLoadingTimeEvent": break;
+                        case "NNet.Game.SPeerSetSyncPlayingTimeEvent": break;
                     }
                 }
                 return result;
             }
         }
     }
-
     public class Utils
     {
         public static string FindFirstAssignment(string pythonCodeFilePath, string variableName)
         {
             try
             {
-                // 读取文件内容
                 string[] lines = File.ReadAllLines(pythonCodeFilePath);
                 bool variableFound = false;
-                StringBuilder fullAssignment = new StringBuilder(); // 使用 StringBuilder
-                Stack<char> structureStack = new Stack<char>(); // 用栈来处理嵌套结构
+                StringBuilder fullAssignment = new StringBuilder(); 
+                Stack<char> structureStack = new Stack<char>();
                 string pattern = $@"\b{variableName}\b\s*=";
 
-                // 遍历每一行，查找首次赋值
                 foreach (var line in lines)
                 {
-                    // 如果未找到赋值，则继续查找
                     if (!variableFound)
                     {
                         if (Regex.IsMatch(line, pattern))
@@ -1425,7 +1914,7 @@ namespace SC2Protocol
                         }
 
                         if (structureStack.Count == 0)
-                            break; // 结束捕获
+                            break; 
                     }
                 }
                 if (variableFound)
