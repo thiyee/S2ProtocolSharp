@@ -46,5 +46,8 @@
     <Compile Include="SC2Protocol.cs" />
     <Compile Include="versions.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

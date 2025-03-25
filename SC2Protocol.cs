@@ -1650,7 +1650,11 @@ namespace SC2Protocol
                 GameLoop = (int)((long)message["_gameloop"]);
                 UserId = (int)((long)((PyDictionary)message["_userid"])["m_userId"]);
             }
-            public class BankFileEvent : Event
+            public abstract class BankEvent : Event
+            {
+                protected BankEvent(PyDictionary message) : base(message){}
+            }
+            public class BankFileEvent : BankEvent
             {
                 string FileName;
                 public BankFileEvent(PyDictionary @event) : base(@event)
@@ -1662,7 +1666,7 @@ namespace SC2Protocol
                     return $"[{GetType().Name}] FileName:{FileName}";
                 }
             }
-            public class BankSectionEvent : Event
+            public class BankSectionEvent : BankEvent
             {
                 string SectionName;
                 public BankSectionEvent(PyDictionary @event) : base(@event)
@@ -1674,7 +1678,8 @@ namespace SC2Protocol
                     return $"[{GetType().Name}] SectionName:{SectionName}";
                 }
             }
-            public class BankKeyEvent : Event{
+            public class BankKeyEvent : BankEvent
+            {
                 string KeyName;
                 KeyType type;
                 string data;
@@ -1700,7 +1705,7 @@ namespace SC2Protocol
                     return $"[{GetType().Name}] {KeyName} {type}={data}";
                 }
             }
-            public class BankValueEvent : Event
+            public class BankValueEvent : BankEvent
             {
                 string Name;
                 ValueType type;
@@ -1740,7 +1745,7 @@ namespace SC2Protocol
                     return $"[{GetType().Name}] {Name} { type}={Value}";
                 }
             }
-            public class BankSignatureEvent : Event
+            public class BankSignatureEvent : BankEvent
             {
                 byte[] Signature;
                 Handle Handle;
