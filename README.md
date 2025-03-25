@@ -67,7 +67,7 @@ foreach (var player in details.m_playerList)
 ```csharp
 // 多线程加速模式（实测提升3-4倍）
 var quickResults = protocol.quick_decode_replay_game_events(gameEventsData);
-
+```
 
 ### 协议支持
 
@@ -83,8 +83,6 @@ public class Protocol75689 : S2Protocol
     }
 }
 ```
-
-### 技术实现
 
 ## 解码流程架构
 ```
