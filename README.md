@@ -2,7 +2,7 @@
 
 专为解析《星际争霸2》回放文件中协议数据的C#库，提供核心二进制数据解码能力。
 
-## 核心功能
+### 核心功能
 
 ✅ **基础协议解析**
 - 回放头部信息提取（版本/时长/签名验证）
@@ -18,9 +18,9 @@
 ✅ **多线程加速**
 - 并行事件流解析（`quick_decode_replay_game_events`方法）
 
-## 代码示例
+### 代码示例
 
-### 基础解析
+## 基础解析
 
 ```csharp
 // 初始化协议解析器
@@ -35,7 +35,7 @@ Console.WriteLine($"游戏版本: {header.m_version.m_major}.{header.m_version.m
 Console.WriteLine($"对战时长: {header.m_elapsedGameLoops / 16}秒");
 ```
 
-### 事件处理
+## 事件处理
 ```csharp
 // 解析游戏事件流
 var gameEventsData = File.ReadAllBytes("replay.game.events");
@@ -48,7 +48,7 @@ foreach (var evt in gameEvents.Take(10))
 }
 ```
 
-### 玩家信息提取
+## 玩家信息提取
 ```csharp
 // 解析详细数据
 var detailsData = File.ReadAllBytes("replay.details");
@@ -62,14 +62,14 @@ foreach (var player in details.m_playerList)
 }
 ```
 
-## 性能说明
+### 性能说明
 
 ```csharp
 // 多线程加速模式（实测提升3-4倍）
 var quickResults = protocol.quick_decode_replay_game_events(gameEventsData);
 
 
-## 协议支持
+### 协议支持
 
 通过派生类实现版本适配：
 ```csharp
@@ -84,14 +84,14 @@ public class Protocol75689 : S2Protocol
 }
 ```
 
-## 技术实现
+### 技术实现
 
-### 解码流程架构
+## 解码流程架构
 ```
 原始字节流 → BitPackedDecoder → PyDictionary → Replay对象模型
 ```
 
-### 核心组件
+## 核心组件
 - `BitPackedBuffer`：位级数据读取器
 - `BitPackedDecoder`：基础协议解码器
 - `VersionedDecoder`：版本化协议处理器
