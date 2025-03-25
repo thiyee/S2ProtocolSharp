@@ -15,7 +15,7 @@
 - PyDictionary：键值对映射容器
 
 ✅ **多线程加速**
-- 并行事件流解析（`quick_decode_replay_game_events`方法）
+- 并行事件流解析（`quick_decode_replay_game_events`方法）（实测提升3-4倍）
 
 ### 代码示例
 
@@ -66,10 +66,6 @@ foreach (var player in details.m_playerList)
 向App.config中添加以下内容
 ```
 <gcServer enabled="true" />
-```
-```csharp
-// 多线程加速模式（实测提升3-4倍）
-var quickResults = protocol.quick_decode_replay_game_events(gameEventsData);
 ```
 
 ### 协议支持
