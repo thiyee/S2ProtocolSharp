@@ -26,7 +26,7 @@
 var protocol = S2Protocol.Latest;
 
 // 解析回放头部信息
-var headerData = File.ReadAllBytes("replay.header");
+var headerData = File.ReadAllBytes("replay.header"); //replay.header is SFileMpqUserData in SFileGetFileInfo
 var header = protocol.decode_replay_header(headerData) as Replay.Header;
 
 // 输出基础信息
@@ -62,7 +62,11 @@ foreach (var player in details.m_playerList)
 ```
 
 ### 性能说明
-
+多线程加速需要启用多线程GC
+向App.config中添加以下内容
+```
+<gcServer enabled="true" />
+```
 ```csharp
 // 多线程加速模式（实测提升3-4倍）
 var quickResults = protocol.quick_decode_replay_game_events(gameEventsData);
